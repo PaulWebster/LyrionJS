@@ -17,40 +17,70 @@
   let sheetFocus = null;    // what had the focus before it opened
 
   function sheet(title, items, opts = {}) {
-    closeSheet();
-    const wrap = document.getElementById('sheet');
-    const list = h('div', { class: 'sheet-list' });
-    for (const it of items) {
-      if (!it) continue;
-      if (it.sep) { list.append(h('div', { class: 'sheet-sep' })); continue; }
-      if (it.el) { list.append(it.el); continue; }
-      list.append(h('button', { class: 'sheet-item' + (it.checked ? ' checked' : '') + (it.danger ? ' danger' : ''),
-        onclick: async () => { if (!it.keepOpen) closeSheet(true); try { await it.run(); } catch (e) { fail(e); } } },
-      icon(it.icon || 'play'), h('span', { text: it.label }), it.checked ? icon('check', 'tick') : null));
+    try {
+      // defensive: ensure the sheet host exists and log the call for diagnostics
+      if (typeof diag === 'function') try { diag('ui', `sheet() open: "${String(title)}" items=${(items && items.length) || 0}`); } catch (e) { /* ignore */ }
+      closeSheet();
+      let wrap = document.getElementById('sheet');
+      if (!wrap) {
+        // Create a minimal #sheet host if missing (older browsers or unexpected DOM)
+        wrap = document.createElement('div');
+        wrap.id = 'sheet';
+        // Ensure it overlays other content on old Safari/iOS
+        wrap.style.position = 'fixed';
+        wrap.style.top = '0';
+        wrap.style.left = '0';
+        wrap.style.width = '100%';
+        wrap.style.height = '100%';
+        wrap.style.zIndex = '99999';
+        wrap.hidden = true;
+        document.body.appendChild(wrap);
+        if (typeof diag === 'function') try { diag('ui', 'sheet() created missing #sheet element'); } catch (e) { /* ignore */ }
+      }
+      const list = h('div', { class: 'sheet-list' });
+      for (const it of items) {
+        if (!it) continue;
+        if (it.sep) { list.append(h('div', { class: 'sheet-sep' })); continue; }
+        if (it.el) { list.append(it.el); continue; }
+        list.append(h('button', { class: 'sheet-item' + (it.checked ? ' checked' : '') + (it.danger ? ' danger' : ''),
+          onclick: async () => { if (!it.keepOpen) closeSheet(true); try { await it.run(); } catch (e) { fail(e); } } },
+        icon(it.icon || 'play'), h('span', { text: it.label }), it.checked ? icon('check', 'tick') : null));
+      }
+      const panel = h('div', { class: 'sheet-panel', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
+        h('div', { class: 'sheet-head' }, opts.art ? artEl(opts.art, opts.artIcon || 'note', 'sm') : null,
+          h('div', { class: 'sheet-title' }, h('div', { class: 't1', text: title }), opts.sub ? h('div', { class: 't2', text: opts.sub }) : null),
+          btn('close', 'Close', () => closeSheet())),
+        list);
+      wrap.append(h('div', { class: 'sheet-scrim', onclick: () => closeSheet() }), panel);
+      wrap.hidden = false;
+      sheetClosed = opts.onDismiss || null;
+      // Keyboard and screen readers go into the dialog, and back where they were when it closes.
+      sheetFocus = document.activeElement;
+      requestAnimationFrame(() => {
+        wrap.classList.add('open');
+        if (!panel.contains(document.activeElement)) { const first = panel.querySelector('.sheet-item, input, select, button'); if (first) first.focus(); }
+      });
+    } catch (e) {
+      try { if (typeof diag === 'function') diag('error', 'sheet() exception: ' + (e && e.message ? e.message : String(e))); } catch (x) {}
+      console.error('sheet() failed', e);
+      throw e;
     }
-    const panel = h('div', { class: 'sheet-panel', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
-      h('div', { class: 'sheet-head' }, opts.art ? artEl(opts.art, opts.artIcon || 'note', 'sm') : null,
-        h('div', { class: 'sheet-title' }, h('div', { class: 't1', text: title }), opts.sub ? h('div', { class: 't2', text: opts.sub }) : null),
-        btn('close', 'Close', () => closeSheet())),
-      list);
-    wrap.append(h('div', { class: 'sheet-scrim', onclick: () => closeSheet() }), panel);
-    wrap.hidden = false;
-    sheetClosed = opts.onDismiss || null;
-    // Keyboard and screen readers go into the dialog, and back where they were when it closes.
-    sheetFocus = document.activeElement;
-    requestAnimationFrame(() => {
-      wrap.classList.add('open');
-      if (!panel.contains(document.activeElement)) { const first = panel.querySelector('.sheet-item, input, select, button'); if (first) first.focus(); }
-    });
   }
   /** chosen: closed by picking something (not dismissed). */
   function closeSheet(chosen) {
-    const w = document.getElementById('sheet');
-    w.classList.remove('open'); w.hidden = true; w.textContent = '';
-    const f = sheetClosed; sheetClosed = null;
-    const back = sheetFocus; sheetFocus = null;
-    if (back && back.isConnected && back.focus) back.focus();
-    if (f && !chosen) f();
+    try {
+      const w = document.getElementById('sheet');
+      if (!w) return;
+      w.classList.remove('open'); w.hidden = true; w.textContent = '';
+      const f = sheetClosed; sheetClosed = null;
+      const back = sheetFocus; sheetFocus = null;
+      if (back && back.isConnected && back.focus) back.focus();
+      if (f && !chosen) f();
+      try { if (typeof diag === 'function') diag('ui', 'closeSheet() called chosen=' + !!chosen); } catch (e) {}
+    } catch (e) {
+      try { if (typeof diag === 'function') diag('error', 'closeSheet() exception: ' + (e && e.message ? e.message : String(e))); } catch (x) {}
+      console.error('closeSheet() failed', e);
+    }
   }
 
   /** A text prompt; resolves the entered text, or null if cancelled or dismissed. */

@@ -104,14 +104,26 @@ async function boot() {
   applyTheme();
   renderNav();
   await leaveFrame();
-  document.getElementById('menuBtn').onclick = () => document.body.classList.toggle('nav-open');
+  const menuBtnEl = document.getElementById('menuBtn');
+  if (menuBtnEl) menuBtnEl.onclick = () => document.body.classList.toggle('nav-open');
   // The menu button says whether the drawer is open, whoever opened or closed it.
-  new MutationObserver(() => document.getElementById('menuBtn').setAttribute('aria-expanded', String(document.body.classList.contains('nav-open'))))
-    .observe(document.body, { attributes: true, attributeFilter: ['class'] });
-  document.getElementById('scrim').onclick = () => document.body.classList.remove('nav-open');
-  document.getElementById('playerBtn').onclick = () => S.lms && playerPicker();
-  document.getElementById('localBadge').onclick = () => renameLocal();
-  document.getElementById('unlock').onclick = unlock;
+  new MutationObserver(() => {
+    const menuBtn = document.getElementById('menuBtn');
+    if (menuBtn) menuBtn.setAttribute('aria-expanded', String(document.body.classList.contains('nav-open')));
+  }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  const scrim = document.getElementById('scrim'); if (scrim) scrim.onclick = () => document.body.classList.remove('nav-open');
+
+  // Wrap player button handler with diagnostics + safe invocation
+  const playerBtnEl = document.getElementById('playerBtn');
+  if (playerBtnEl) playerBtnEl.onclick = () => {
+    try { if (typeof diag === 'function') diag('ui', 'playerBtn clicked, S.lms=' + !!S.lms); } catch (e) {}
+    if (S.lms) {
+      try { playerPicker(); } catch (e) { try { if (typeof diag === 'function') diag('error', 'playerPicker threw: ' + (e && e.message ? e.message : String(e))); } catch (x) {} }
+    }
+  };
+
+  const localBadge = document.getElementById('localBadge'); if (localBadge) localBadge.onclick = () => renameLocal();
+  const unlockEl = document.getElementById('unlock'); if (unlockEl) unlockEl.onclick = unlock;
   S.lms = new LMS();
   try {
     const v = await S.lms.rpc('', ['version', '?'], 8000);
